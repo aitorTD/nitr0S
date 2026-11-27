@@ -561,12 +561,12 @@ No es añadir funciones, ni pulir lo que todavía no se sabe si existe, ni conve
 | Q8 | ¿Hay copia de seguridad posible del firmware de fábrica? | Si la primera escritura es una puerta de un solo sentido | `read_flash` dos veces comparando SHA-256; buscar un fichero de actualización oficial del fabricante |
 | Q9 | ¿Por qué vía concreta accede el asistente externo a la API del panel, y qué ámbitos se le conceden? | La API de integración y el modelo de permisos | Probarlo cuando esa vía exista; no se presupone integración nativa ni avisos de la Pi hacia él |
 | Q10 | Escala de valoración de la repetición espaciada (dos niveles o cuatro), modo examen frente a modo repaso, política de reinicio de progreso al editar, y topes diarios | El esquema del banco, la interacción de la app de tests y el planificador | Decisiones del autor, enumeradas como T1 a T6 en 11.6; T0, el algoritmo, quedó resuelta dejándolo abierto |
-| Q14 | Tipografía, disposiciones, iconos, espaciados y temas del aparato y de la consola | Todo el trabajo de interfaz y los tokens compartidos | Fase de diseño con propuestas renderizadas en el simulador a 800×480 y 1 bpp, revisadas por el autor (12.3) |
-| Q15 | Disponibilidad y coste del asistente externo, que es un producto de terceros fuera del control del autor | Nada del aparato, por requisito: nitr0S debe funcionar entero sin él. Afecta solo a la comodidad de dictar desde el reloj | Comprobarlo cuando se configure su acceso; es una pregunta distinta de Q9, que es la vía y los permisos |
-| Q16 | Mapa de botones definitivo, gestos de pulsación larga, bloqueo mientras duerme y modo de una mano | La navegación de todas las pantallas y el esquema de la app de tests | Depende de Q7 (número y posición reales de los botones) y de decisiones de interacción del autor |
 | Q11 | ¿Se llega a la ranura de microSD sin herramientas? | Si sacar la tarjeta es una vía viable | Inspección física |
 | Q12 | ¿Qué arquitectura tiene la Pi, `aarch64` o `armv7l`? | El objetivo de compilación cruzada | `uname -m` |
 | Q13 | ¿Qué consumo en reposo tiene el CW2017 y se puede obtener su perfil de batería? | Si el indicador de batería puede dar un porcentaje o solo voltaje | Medición por periférico y búsqueda del perfil en el volcado |
+| Q14 | Tipografía, disposiciones, iconos, espaciados y temas del aparato y de la consola | Todo el trabajo de interfaz y los tokens compartidos | Fase de diseño con propuestas renderizadas en el simulador a 800×480 y 1 bpp, revisadas por el autor (12.3) |
+| Q15 | Disponibilidad y coste del asistente externo, que es un producto de terceros fuera del control del autor | Nada del aparato, por requisito: nitr0S debe funcionar entero sin él. Afecta solo a la comodidad de dictar desde el reloj | Comprobarlo cuando se configure su acceso; es una pregunta distinta de Q9, que es la vía y los permisos |
+| Q16 | Mapa de botones definitivo, gestos de pulsación larga, bloqueo mientras duerme y modo de una mano | La navegación de todas las pantallas y el esquema de la app de tests | Depende de Q7 (número y posición reales de los botones) y de decisiones de interacción del autor |
 
 ### Puertas de control
 
