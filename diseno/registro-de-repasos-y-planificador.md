@@ -80,7 +80,7 @@ La carga son unos **78 bytes**, así que el marco añade un 10%. Una sesión de 
 
 **Y una consecuencia que simplifica las cosas respecto al registro de operaciones general:** el registro de repasos **no se compacta nunca**. La compactación existe para recuperar espacio de registros muertos, y aquí no hay registros muertos porque nada se edita ni se borra. Solo la caché derivada se reescribe, y se reescribe entera (§5).
 
-* Fichero: `/nitr0s/apps/tests/reviews.log`, abierto en modo añadir.
+* Fichero: `/nitr0s/data/tests/reviews.log`, abierto en modo añadir. **Va bajo `data/` y no bajo el directorio de versión de la app**, porque si viviera dentro, actualizar la app borraría el historial; ver `manifiesto-y-paquete-de-app.md` §1.
 * Al arrancar, **pasada de recuperación**: recorrer validando `len` y `crc32`, y **truncar hasta el último registro válido**. Un corte de corriente o una extracción de la tarjeta a mitad de escritura deja un registro roto al final, que es exactamente el caso que esto resuelve.
 * **Tarjeta extraída:** modo degradado de solo lectura, se avisa, se aborta la sincronización y **se vuelve a deep sleep**. No se falla.
 * **Otra tarjeta insertada:** el marcador con `device_id` y UUID de la tarjeta no coincide, así que **no se fusiona nada** y se ofrece una adopción explícita. Un registro de repasos ajeno fusionado en silencio sería indetectable después.
@@ -112,7 +112,7 @@ El problema de esta app no es la red, es el reloj.
 
 Derivado, recalculable y **nunca autoritativo**. Por pregunta: próxima fecha, intervalo en días, facilidad en milésimas, repeticiones, recaídas, última valoración, estado (`nueva` / `aprendiendo` / `repaso` / `reaprendiendo`), bandera `provisional` y `progress_epoch` vigente.
 
-Se guarda como caché en `/nitr0s/apps/tests/sched.cache` para no recorrer el historial en cada arranque, y se escribe **entero** por fichero temporal en el mismo directorio → `fsync` → renombrado. Nunca se muta en el sitio.
+Se guarda como caché en `/nitr0s/data/tests/sched.cache` para no recorrer el historial en cada arranque, y se escribe **entero** por fichero temporal en el mismo directorio → `fsync` → renombrado. Nunca se muta en el sitio.
 
 La caché lleva una cabecera con `event_count`, el `crc32` del **último** registro del log y `scheduler_version`. Comprobar si está obsoleta es entonces **O(1)**: si cualquiera de los tres no cuadra con el log, se descarta la caché y se reconstruye recorriendo. Y si se corrompe, se descarta: no hay nada que recuperar porque no contiene ningún hecho.
 
