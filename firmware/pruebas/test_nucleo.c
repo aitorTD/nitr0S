@@ -3,18 +3,23 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../nucleo/lanzador.h"
 #include "../nucleo/render.h"
 
 static int fallos = 0;
 static int hechas = 0;
 
-#define COMPRUEBA(cond, msg, ...)                                     \
-    do {                                                              \
-        hechas++;                                                     \
-        if (!(cond)) {                                                \
-            fallos++;                                                 \
-            printf("  FALLO %s:%d: " msg "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
-        }                                                             \
+// El mensaje va siempre, así que `...` nunca queda vacío y no hace falta el
+// `##__VA_ARGS__` de GNU: esto es C11 a secas y pasa -pedantic.
+#define COMPRUEBA(cond, ...)                                \
+    do {                                                    \
+        hechas++;                                           \
+        if (!(cond)) {                                      \
+            fallos++;                                       \
+            printf("  FALLO %s:%d: ", __FILE__, __LINE__);  \
+            printf(__VA_ARGS__);                            \
+            printf("\n");                                   \
+        }                                                   \
     } while (0)
 
 extern const n0_fuente_t n0_fuente_cuerpo;
@@ -170,12 +175,188 @@ static void test_maquetas(void) {
     }
 }
 
+
+// --- El lanzador: aquí viven los invariantes ---------------------------------
+
+static uint64_t g_reloj_us;
+static uint64_t reloj_falso(void) { return g_reloj_us; }
+
+static n0_err_t ok_arrancar(n0_ctx_t *c, bool frio) { (void)c; (void)frio; return N0_OK; }
+static n0_err_t ok_pintar(n0_ctx_t *c, n0_vista_t *v) {
+    (void)c;
+    int16_t p = n0_pantalla(v, "Buena");
+    int16_t l = n0_lista(v, p, 0, 0, 1);
+    n0_fila(v, l, "una fila", NULL, N0_MARCA_NINGUNA);
+    int16_t b = n0_barra(v, p);
+    n0_accion(v, b, N0_ACT_ELEGIR, "Elegir");
+    n0_accion(v, b, N0_ACT_ATRAS, "Atrás");
+    return N0_OK;
+}
+static const n0_app_t APP_BUENA = {1, "buena", "Buena", N0_CAP_STORE,
+                                   ok_arrancar, NULL, NULL, NULL, NULL, ok_pintar};
+
+static n0_err_t falla_evento(n0_ctx_t *c, const n0_evento_t *e) {
+    (void)c; (void)e; return N0_ERR_ESTADO;
+}
+static const n0_app_t APP_FALLONA = {1, "fallona", "Fallona", 0,
+                                     ok_arrancar, falla_evento, NULL, NULL, NULL, ok_pintar};
+
+// Esta se pasa del presupuesto sin devolver error: el lanzador tiene que
+// tratarla igual que a una que falla.
+static n0_err_t lenta_evento(n0_ctx_t *c, const n0_evento_t *e) {
+    (void)c; (void)e;
+    g_reloj_us += N0_PRESUP_EVENTO_US + 1000;
+    return N0_OK;
+}
+static const n0_app_t APP_LENTA = {1, "lenta", "Lenta", 0,
+                                   ok_arrancar, lenta_evento, NULL, NULL, NULL, ok_pintar};
+
+// Y esta devuelve un árbol inválido: un vacío sin "qué hacer".
+static n0_err_t mal_pintar(n0_ctx_t *c, n0_vista_t *v) {
+    (void)c;
+    int16_t p = n0_pantalla(v, "Mala");
+    n0_vacio(v, p, "No hay nada.", NULL);
+    int16_t b = n0_barra(v, p);
+    n0_accion(v, b, N0_ACT_ATRAS, "Atrás");
+    return N0_OK;
+}
+static const n0_app_t APP_MAL_ARBOL = {1, "malarbol", "Mal árbol", 0,
+                                       ok_arrancar, NULL, NULL, NULL, NULL, mal_pintar};
+
+static char g_arena_t[4096];
+
+static void test_carga(void) {
+    n0_lanzador_t l;
+    n0_lanzador_init(&l, NULL, reloj_falso);
+
+    COMPRUEBA(n0_cargar(&l, &APP_BUENA, g_arena_t, sizeof(g_arena_t)) == N0_CARGA_OK,
+              "una app correcta se carga");
+
+    // api_required fuera de rango: se RECHAZA al cargar, no al llamar.
+    n0_app_t vieja = APP_BUENA;
+    vieja.id = "vieja";
+    vieja.api_required = N0_API_VERSION + 1;
+    COMPRUEBA(n0_cargar(&l, &vieja, g_arena_t, sizeof(g_arena_t)) == N0_CARGA_API_FUERA_DE_RANGO,
+              "api_required fuera de rango tiene que rechazarse al cargar");
+
+    // Una capacidad desconocida NO se ignora: ignorarla la concedería en
+    // silencio como "ninguna" y el fallo saldría en el aparato.
+    n0_app_t rara = APP_BUENA;
+    rara.id = "rara";
+    rara.capacidades = 1u << 20;
+    COMPRUEBA(n0_cargar(&l, &rara, g_arena_t, sizeof(g_arena_t)) == N0_CARGA_CAP_DESCONOCIDA,
+              "una capacidad desconocida tiene que rechazarse");
+
+    n0_app_t muda = APP_BUENA;
+    muda.id = "muda";
+    muda.pintar = NULL;
+    COMPRUEBA(n0_cargar(&l, &muda, g_arena_t, sizeof(g_arena_t)) == N0_CARGA_SIN_PINTAR,
+              "una app sin pintar no se carga");
+}
+
+static void test_cuarentena(void) {
+    static char ar[2][2048];
+    n0_lanzador_t l;
+    n0_lanzador_init(&l, NULL, reloj_falso);
+    n0_cargar(&l, &APP_FALLONA, ar[0], sizeof(ar[0]));
+    n0_cargar(&l, &APP_BUENA, ar[1], sizeof(ar[1]));
+
+    n0_evento_t ev = {N0_EV_ACCION, N0_ACT_ELEGIR, 1, 0};
+    for (int i = 0; i < N0_CUARENTENA; i++) {
+        COMPRUEBA(n0_abrir(&l, "fallona", true) == N0_OK, "la app abre");
+        COMPRUEBA(n0_evento(&l, &ev) != N0_OK, "y falla");
+        COMPRUEBA(n0_activa(&l) < 0, "un fallo deja la app, no la mantiene");
+    }
+    COMPRUEBA(n0_abrir(&l, "fallona", true) != N0_OK,
+              "dos fallos seguidos la dejan en cuarentena");
+
+    // Y la cuarentena de una NO toca a las demás.
+    COMPRUEBA(n0_abrir(&l, "buena", true) == N0_OK,
+              "la cuarentena de una app no afecta a las otras");
+}
+
+static void test_plazo_es_un_fallo(void) {
+    static char ar[2048];
+    n0_lanzador_t l;
+    n0_lanzador_init(&l, NULL, reloj_falso);
+    n0_cargar(&l, &APP_LENTA, ar, sizeof(ar));
+    g_reloj_us = 1000;
+    COMPRUEBA(n0_abrir(&l, "lenta", true) == N0_OK, "abre bien");
+    n0_evento_t ev = {N0_EV_ACCION, N0_ACT_ELEGIR, 1, 0};
+    COMPRUEBA(n0_evento(&l, &ev) == N0_ERR_PLAZO,
+              "pasarse del presupuesto sin devolver error cuenta como fallo");
+    COMPRUEBA(n0_activa(&l) < 0, "y la app se abandona igual");
+}
+
+static void test_siempre_se_pinta_algo(void) {
+    static uint8_t bits[(800 / 8) * 480];
+    static char ar[2048];
+    n0_lienzo_t lz;
+    n0_lanzador_t l;
+    n0_lanzador_init(&l, NULL, reloj_falso);
+    n0_cargar(&l, &APP_MAL_ARBOL, ar, sizeof(ar));
+    n0_abrir(&l, "malarbol", true);
+
+    n0_lienzo_init(&lz, bits, 800, 480);
+    n0_pintar(&l, &lz, n0_maquetas[0]);
+    // Un árbol inválido no deja la pantalla en blanco: se pinta el error.
+    int tinta = 0;
+    for (int16_t y = 0; y < 480 && tinta == 0; y++)
+        for (int16_t x = 0; x < 800; x++)
+            if (n0_leer(&lz, x, y)) { tinta = 1; break; }
+    COMPRUEBA(tinta, "nunca se devuelve un lienzo sin pintar");
+    COMPRUEBA(n0_activa(&l) < 0, "y la app culpable se abandona");
+
+    // Con la pila vacía también se pinta algo.
+    n0_lienzo_init(&lz, bits, 800, 480);
+    n0_pintar(&l, &lz, n0_maquetas[0]);
+    tinta = 0;
+    for (int16_t y = 0; y < 480 && tinta == 0; y++)
+        for (int16_t x = 0; x < 800; x++)
+            if (n0_leer(&lz, x, y)) { tinta = 1; break; }
+    COMPRUEBA(tinta, "con la pila vacía se pinta la pantalla de error");
+}
+
+static void test_desenrollar_siempre_gana(void) {
+    static char ar[2048];
+    n0_lanzador_t l;
+    n0_lanzador_init(&l, NULL, reloj_falso);
+    n0_cargar(&l, &APP_BUENA, ar, sizeof(ar));
+    for (int i = 0; i < 3; i++) n0_abrir(&l, "buena", true);
+    COMPRUEBA(l.n_pila == 3, "la pila crece");
+    l.cerrojos_vigilia = 5;
+    n0_desenrollar(&l);
+    // El invariante que manda sobre todos: siempre se puede volver a dormir.
+    COMPRUEBA(l.n_pila == 0, "desenrollar vacía la pila sin preguntar");
+    COMPRUEBA(l.cerrojos_vigilia == 0,
+              "y libera los cerrojos: un fallo de app NUNCA debe impedir dormir");
+}
+
+static void test_arena_es_del_sistema(void) {
+    static char ar[64];
+    n0_lanzador_t l;
+    n0_lanzador_init(&l, NULL, reloj_falso);
+    n0_cargar(&l, &APP_BUENA, ar, sizeof(ar));
+    n0_ctx_t *c = &l.ctx[0];
+    COMPRUEBA(n0_reservar(c, 32) != NULL, "cabe");
+    COMPRUEBA(n0_reservar(c, 1000) == NULL, "no cabe y se dice, no se desborda");
+    n0_abrir(&l, "buena", true);
+    n0_cerrar(&l);
+    COMPRUEBA(c->arena_usada == 0, "al abandonar la app, el sistema tira su arena entera");
+}
+
 int main(void) {
     printf("pruebas del núcleo de nitr0S\n");
     test_validacion();
     test_utf8();
     test_lienzo();
     test_maquetas();
+    test_carga();
+    test_cuarentena();
+    test_plazo_es_un_fallo();
+    test_siempre_se_pinta_algo();
+    test_desenrollar_siempre_gana();
+    test_arena_es_del_sistema();
     printf("%d comprobaciones, %d fallos\n", hechas, fallos);
     return fallos == 0 ? 0 : 1;
 }

@@ -108,8 +108,11 @@ static const muestra_t MUESTRAS[] = {
 };
 static const int N_MUESTRAS = (int)(sizeof(MUESTRAS) / sizeof(MUESTRAS[0]));
 
+int guion_ejecutar(const char *dir);
+
 int main(int argc, char **argv) {
     const char *dir = (argc > 1) ? argv[1] : ".";
+    if (argc > 2 && strcmp(argv[2], "-guion") == 0) return guion_ejecutar(dir);
     n0_lienzo_t l;
     n0_vista_t v;
     char ruta[512];

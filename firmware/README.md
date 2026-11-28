@@ -17,16 +17,19 @@ una maqueta que luego no se parece».
 | `nucleo/render.c` — árbol de vista → lienzo, con la maqueta como datos | hecho |
 | `nucleo/maquetas.c` — **tres propuestas** para la fase visual | hecho, **ninguna aprobada** |
 | `sim/` — simulador y salida PBM | hecho |
-| `pruebas/` — 34 comprobaciones | en verde |
-| Anfitrión de `app_t`, bucle de eventos y presupuestos | pendiente |
-| Las tres apps de v1 | pendientes |
+| `nucleo/lanzador.c` — pila de pantallas, presupuestos, cuarentena, arena | hecho |
+| `apps/` — **las tres apps de v1**: Listas, Tests y Estado | hechas contra un almacén de mentira |
+| `sim/guion.c` — ejecuta el lanzador con un guion de pulsaciones | hecho |
+| `pruebas/` — 58 comprobaciones | en verde |
+| Almacén de verdad: registro de operaciones en C y sincronización | pendiente |
 | Capa de abstracción de hardware, panel, sueño | pendiente, necesita el aparato |
 
 ## Usar
 
 ```sh
-make            # compila el simulador y pasa las pruebas
-./nitr0sim .    # escribe un .pbm por maqueta y pantalla
+make                     # compila el simulador y pasa las 58 pruebas
+./nitr0sim .             # un .pbm por maqueta y pantalla, para la fase visual
+./nitr0sim . -guion      # ejecuta las apps de verdad con un guion de pulsaciones
 go run ../herramientas/pbm2png -escala 2 *.pbm
 ```
 
@@ -55,3 +58,21 @@ el renderizador **se niega a pintar** un árbol que las incumpla:
 * Ninguna pantalla puede presentar cero acciones posibles.
 * Siempre hay vuelta atrás.
 * El árbol tiene un tope de 256 nodos y pasarse se detecta, no corrompe memoria.
+
+## Lo que el lanzador garantiza
+
+* **Un error devuelto y un plazo agotado se tratan igual**: deja la app, pinta
+  una pantalla legible con el código y la app culpable, y el sistema sigue.
+* **Nunca se devuelve un lienzo sin pintar.** Si la app falla, o devuelve un
+  árbol inválido, o la pila está vacía, se pinta la pantalla de error, que
+  cumple las mismas reglas que el núcleo exige a las apps.
+* **Cuarentena a los dos fallos consecutivos**, y «consecutivos» significa sin
+  una sesión terminada limpiamente en medio. La cuarentena de una app no toca
+  a las demás.
+* **Desenrollar no pregunta y no puede fallar**: vacía la pila y libera los
+  cerrojos de vigilia, que son del sistema y nunca de la app. Un fallo de app
+  no puede impedir dormir.
+* **La arena es del sistema** y se tira entera al abandonar la app, que es lo
+  que hace que matarla sea recuperable en vez de una fuga.
+* **Una capacidad desconocida o un `api_required` fuera de rango se rechazan al
+  CARGAR**, no al llamar.

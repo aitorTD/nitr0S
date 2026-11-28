@@ -173,6 +173,29 @@ n0_vista_err_t n0_render(n0_lienzo_t *l, const n0_vista_t *v, const n0_maqueta_t
             case N0_NODO_LISTA:
                 lista(l, v, m, i, y_cuerpo, alto_cuerpo);
                 break;
+            case N0_NODO_PREGUNTA: {
+                // Enunciado arriba, opciones debajo como filas seleccionables.
+                // La opción marcada se acusa invirtiendo su fila, que es el
+                // acuse más barato que admite un e-ink.
+                int16_t y = (int16_t)(y_cuerpo + m->f_cuerpo->ascenso + 4);
+                n0_texto_pintar_ancho(l, m->f_cuerpo, m->margen_x, y, n->a ? n->a : "",
+                                      (int16_t)(l->ancho - 2 * m->margen_x), N0_TINTA);
+                y = (int16_t)(y + m->f_cuerpo->alto_linea + 10);
+                int16_t k = 0;
+                for (int16_t o = n->hijo; o >= 0; o = v->nodos[o].hermano, k++) {
+                    n0_rect_t fila = {m->margen_x, (int16_t)(y - m->f_cuerpo->ascenso),
+                                      (int16_t)(l->ancho - 2 * m->margen_x), m->alto_fila};
+                    char letra[8];
+                    snprintf(letra, sizeof(letra), "%c)", (char)('a' + k));
+                    n0_texto_pintar(l, m->f_cuerpo, (int16_t)(m->margen_x + 6), y, letra, N0_TINTA);
+                    n0_texto_pintar_ancho(l, m->f_cuerpo, (int16_t)(m->margen_x + m->sangria_marca),
+                                          y, v->nodos[o].a ? v->nodos[o].a : "",
+                                          (int16_t)(fila.w - m->sangria_marca - 6), N0_TINTA);
+                    if (k == n->sel) n0_invertir(l, fila);
+                    y = (int16_t)(y + m->alto_fila);
+                }
+                break;
+            }
             case N0_NODO_VACIO:
                 bloque_centrado(l, m, y_cuerpo, alto_cuerpo, n->a, "", n->c);
                 break;
