@@ -7,3 +7,9 @@ provision.json
 # Binarios compilados
 /servidor/nitr0sd
 /servidor/nitr0sd-*
+
+# Construcción del firmware
+/firmware/nitr0sim
+/firmware/nitr0test
+*.pbm
+*.o
