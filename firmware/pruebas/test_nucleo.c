@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../nucleo/almacen.h"
 #include "../nucleo/lanzador.h"
 #include "../nucleo/render.h"
 
@@ -345,6 +346,145 @@ static void test_arena_es_del_sistema(void) {
     COMPRUEBA(c->arena_usada == 0, "al abandonar la app, el sistema tira su arena entera");
 }
 
+
+// --- El almacén --------------------------------------------------------------
+
+static n0_dueno_t dueno_prueba(uint16_t t) {
+    (void)t;
+    return N0_DUENO_COMPARTIDO;
+}
+
+static void test_almacen(void) {
+    static uint8_t log[8192], val_a[8192], val_b[8192], val_c[8192];
+    n0_almacen_t a;
+    n0_almacen_init(&a, log, sizeof(log), 0xD0, dueno_prueba, val_a, sizeof(val_a));
+
+    n0_entidad_t e = n0_almacen_crear(&a, 10);
+    COMPRUEBA(e.creador == 0xD0 && e.seq == 1, "el identificador es (creador, seq)");
+    COMPRUEBA(n0_almacen_fijar(&a, e, 10, 1, "leche", 5) == N0_OK, "se escribe el texto");
+
+    const n0_ent_t *ent = n0_fusion_entidad(&a.fus, e);
+    COMPRUEBA(ent != NULL, "la entidad existe tras emitir");
+    const n0_campo_t *t = n0_ent_campo(ent, 1);
+    COMPRUEBA(t && t->version == 1, "la primera escritura de un campo es la versión 1");
+
+    // Las ediciones sucesivas suben la versión, o la segunda no ganaría.
+    n0_almacen_fijar(&a, e, 10, 1, "leche entera", 12);
+    n0_almacen_fijar(&a, e, 10, 1, "leche desnatada", 15);
+    ent = n0_fusion_entidad(&a.fus, e);
+    t = n0_ent_campo(ent, 1);
+    COMPRUEBA(t && t->version == 3, "tres escrituras llegan a la versión 3, salió %d",
+              t ? (int)t->version : -1);
+    uint16_t nv = 0;
+    const uint8_t *vv = n0_ent_valor(&a.fus, ent, 1, &nv);
+    COMPRUEBA(vv && nv == 15 && memcmp(vv, "leche desnatada", 15) == 0, "y queda la última");
+
+    // Recargar el registro tiene que dar el mismo estado, y reconstruir los
+    // contadores: si el lamport quedara por detrás, se reutilizaría y la
+    // idempotencia se rompería en silencio.
+    uint64_t lam = a.lamport, seq = a.creator_seq;
+    n0_almacen_t b;
+    static uint8_t log2[8192];
+    n0_almacen_init(&b, log2, sizeof(log2), 0xD0, dueno_prueba, val_b, sizeof(val_b));
+    size_t valido = n0_almacen_cargar(&b, log, a.n);
+    COMPRUEBA(valido == a.n, "el registro entero es válido al recargar");
+    COMPRUEBA(b.lamport == lam, "el lamport se reconstruye del registro (%llu vs %llu)",
+              (unsigned long long)b.lamport, (unsigned long long)lam);
+    COMPRUEBA(b.creator_seq == seq, "y el contador de creación también");
+    const n0_ent_t *ent2 = n0_fusion_entidad(&b.fus, e);
+    const n0_campo_t *t2 = ent2 ? n0_ent_campo(ent2, 1) : NULL;
+    COMPRUEBA(t2 && t2->version == 3, "y el estado fusionado es el mismo");
+
+    // Un registro truncado a mitad no se interpreta a medias.
+    static uint8_t log3[8192];
+    n0_almacen_t c;
+    n0_almacen_init(&c, log3, sizeof(log3), 0xD0, dueno_prueba, val_c, sizeof(val_c));
+    size_t v3 = n0_almacen_cargar(&c, log, a.n - 3);
+    COMPRUEBA(v3 < a.n, "un registro cortado da un prefijo más corto");
+    COMPRUEBA(v3 % 1 == 0 && c.fus.n >= 1, "y lo que queda sigue siendo usable");
+}
+
+static void test_almacen_lleno(void) {
+    // Un registro diminuto: cabe una operación y poco más.
+    static uint8_t log[140], val_a[4096];
+    n0_almacen_t a;
+    n0_almacen_init(&a, log, sizeof(log), 0xD0, dueno_prueba, val_a, sizeof(val_a));
+
+    n0_entidad_t e = n0_almacen_crear(&a, 10);
+    COMPRUEBA(e.seq == 1, "la primera cabe");
+    size_t antes = a.n;
+    uint64_t lam_antes = a.lamport;
+
+    n0_err_t r = N0_OK;
+    for (int i = 0; i < 20 && r == N0_OK; i++) r = n0_almacen_fijar(&a, e, 10, 1, "xxxxxxxxxx", 10);
+    COMPRUEBA(r == N0_ERR_CUOTA, "al llenarse se devuelve cuota agotada, salió %s", n0_err_codigo(r));
+    COMPRUEBA(a.n <= sizeof(log), "nunca se escribe más allá del final del registro");
+    COMPRUEBA(a.n >= antes, "lo que ya estaba escrito no se toca");
+    COMPRUEBA(a.lleno, "y queda marcado como lleno");
+    (void)lam_antes;
+
+    // Y el registro sigue siendo legible entero: no hay escritura a medias.
+    int ops = 0;
+    size_t valido = n0_op_recuperar(log, a.n, &ops, NULL);
+    COMPRUEBA(valido == a.n, "el registro sigue íntegro tras llenarse (%zu de %zu)", valido, a.n);
+}
+
+static void test_recibidas_no_entran_en_el_registro_propio(void) {
+    static uint8_t log[4096], val_a[4096];
+    static uint8_t ajenas[4096];
+    n0_almacen_t a;
+    n0_almacen_init(&a, log, sizeof(log), 0xD0, dueno_prueba, val_a, sizeof(val_a));
+
+    // Una operación de la consola, como la que llegaría del servidor.
+    n0_op_t op;
+    memset(&op, 0, sizeof(op));
+    op.schema = N0_OP_SCHEMA;
+    op.kind = N0_OP_FIJAR;
+    op.autor = 0xC0;
+    op.autor_tipo = N0_AUTOR_CONSOLA;
+    op.lamport = 7;
+    op.tipo_entidad = 10;
+    op.entidad = (n0_entidad_t){0xC0, 1};
+    op.campo = 1;
+    op.version_campo = 1;
+    op.n_valor = 3;
+    memcpy(op.valor, "pan", 3);
+    size_t n = n0_op_codificar(ajenas, sizeof(ajenas), &op);
+
+    size_t propio_antes = a.n;
+    n0_almacen_recibir(&a, ajenas, n);
+    COMPRUEBA(a.n == propio_antes,
+              "lo que viene del servidor se fusiona pero NO entra en el registro de salida");
+    COMPRUEBA(n0_fusion_entidad(&a.fus, op.entidad) != NULL, "pero sí está en el estado");
+    // Y el lamport del aparato no se contamina con el del otro lado.
+    COMPRUEBA(a.lamport == 0, "el lamport del aparato es suyo, no del servidor");
+}
+
+
+// --- Presupuesto de memoria --------------------------------------------------
+//
+// Esto existe porque ya pasó: el estado fusionado guardaba un valor de 4 KB en
+// línea por campo y ocupaba 3,6 MB, imposible en un ESP32-S3 de 512 KB. Lo
+// encontró un segfault en las pruebas, no una revisión. Un tope comprobado
+// impide que vuelva a colarse.
+#define PRESUP_FUSION (64 * 1024)
+#define PRESUP_LANZADOR (8 * 1024)
+#define PRESUP_VISTA (16 * 1024)
+
+static void test_presupuesto_de_memoria(void) {
+    COMPRUEBA(sizeof(n0_fusion_t) <= PRESUP_FUSION,
+              "el estado fusionado ocupa %zu bytes y el tope son %d",
+              sizeof(n0_fusion_t), PRESUP_FUSION);
+    COMPRUEBA(sizeof(n0_lanzador_t) <= PRESUP_LANZADOR,
+              "el lanzador ocupa %zu bytes y el tope son %d",
+              sizeof(n0_lanzador_t), PRESUP_LANZADOR);
+    COMPRUEBA(sizeof(n0_vista_t) <= PRESUP_VISTA,
+              "el árbol de vista ocupa %zu bytes y el tope son %d",
+              sizeof(n0_vista_t), PRESUP_VISTA);
+    printf("  memoria: fusión %zu B, lanzador %zu B, vista %zu B, framebuffer %d B\n",
+           sizeof(n0_fusion_t), sizeof(n0_lanzador_t), sizeof(n0_vista_t), (800 / 8) * 480);
+}
+
 int main(void) {
     printf("pruebas del núcleo de nitr0S\n");
     test_validacion();
@@ -357,6 +497,10 @@ int main(void) {
     test_siempre_se_pinta_algo();
     test_desenrollar_siempre_gana();
     test_arena_es_del_sistema();
+    test_almacen();
+    test_almacen_lleno();
+    test_recibidas_no_entran_en_el_registro_propio();
+    test_presupuesto_de_memoria();
     printf("%d comprobaciones, %d fallos\n", hechas, fallos);
     return fallos == 0 ? 0 : 1;
 }

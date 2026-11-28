@@ -20,11 +20,13 @@ una maqueta que luego no se parece».
 | `nucleo/lanzador.c` — pila de pantallas, presupuestos, cuarentena, arena | hecho |
 | `apps/` — **las tres apps de v1**: Listas, Tests y Estado | hechas contra un almacén de mentira |
 | `sim/guion.c` — ejecuta el lanzador con un guion de pulsaciones | hecho |
-| `pruebas/` — 58 comprobaciones | en verde |
+| `pruebas/` — 82 comprobaciones más la cruzada | en verde |
 | `nucleo/opfmt.c` — codificación canónica, **los mismos bytes que el servidor** | hecha |
 | `nucleo/fusion.c` — motor de fusión con las mismas reglas que el servidor | hecho |
 | **Prueba cruzada**: C y Go fusionan el mismo registro y convergen | **en verde** |
-| Conectar las apps al almacén de verdad y al servidor | pendiente |
+| `nucleo/almacen.c` — la API de datos de las apps, sobre el registro | hecha |
+| **Las apps corren sobre el almacén de verdad**, no sobre uno de mentira | hecho |
+| Cliente de sincronización: sobre, HMAC y transporte | pendiente |
 | Capa de abstracción de hardware, panel, sueño | pendiente, necesita el aparato |
 
 ## Usar
@@ -102,3 +104,18 @@ del mismo autor que **no** son conflictos, y texto con acentos y `ñ`.
 
 Si esta prueba se rompe, la sincronización está rota de una forma que en
 producción no se nota hasta meses después, cuando ya hay historial que perder.
+
+## Presupuesto de memoria
+
+El simulador corre en un portátil, así que nada impide escribir estructuras
+enormes sin enterarse. Por eso hay un tope comprobado:
+
+```
+memoria: fusión 36912 B, lanzador 856 B, vista 10248 B, framebuffer 48000 B
+```
+
+Existe porque ya pasó: el estado fusionado guardaba el valor de cada campo en
+línea, con el tope de 4 KB que admite una operación, y ocupaba **3,6 MB** —
+imposible en un ESP32-S3, que tiene 512 KB de SRAM. Lo encontró un segfault en
+las pruebas, no una revisión. Ahora los valores viven en un almacén aparte que
+pone quien llama, y el tope se comprueba en cada ejecución.

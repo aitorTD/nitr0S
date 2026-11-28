@@ -70,11 +70,23 @@ typedef struct n0_ctx n0_ctx_t;
 typedef enum { N0_SYNC_NUNCA = 0, N0_SYNC_AL_DIA, N0_SYNC_PENDIENTE, N0_SYNC_FALLANDO } n0_sync_estado_t;
 typedef enum { N0_RELOJ_FIABLE = 0, N0_RELOJ_DUDOSO } n0_reloj_estado_t;
 
+// La identidad de una entidad es el par (creador, seq) de 16 bytes. La app lo
+// trata como opaco: lo recibe al iterar y lo devuelve al escribir.
+typedef struct {
+    uint64_t creador;
+    uint64_t seq;
+} n0_id_t;
+
 typedef struct {
     n0_err_t (*lista_abrir)(n0_ctx_t *, uint32_t ds, void **it);
-    n0_err_t (*lista_siguiente)(n0_ctx_t *, void *it, const char **texto, uint32_t *id, uint8_t *marca);
+    // OJO: el `texto` que devuelve apunta a memoria DEL SISTEMA que se
+    // reutiliza en la llamada siguiente. Si la app lo va a guardar, tiene que
+    // COPIARLO a su arena. Guardar el puntero y seguir iterando hace que todas
+    // las filas acaben enseñando el último texto leído, y es un fallo que no
+    // se ve hasta que se mira la pantalla.
+    n0_err_t (*lista_siguiente)(n0_ctx_t *, void *it, const char **texto, n0_id_t *id, uint8_t *marca);
     n0_err_t (*lista_cerrar)(n0_ctx_t *, void *it);
-    n0_err_t (*marcar)(n0_ctx_t *, uint32_t ds, uint32_t id, bool hecho);
+    n0_err_t (*marcar)(n0_ctx_t *, uint32_t ds, n0_id_t id, bool hecho);
     n0_err_t (*sync_estado)(n0_ctx_t *, n0_sync_estado_t *out);
     n0_err_t (*sync_forzar)(n0_ctx_t *);
     n0_err_t (*bateria)(n0_ctx_t *, int *pct, int *mv);

@@ -37,14 +37,15 @@ static void volcar(const n0_fusion_t *f, char *out, size_t cap) {
         const n0_ent_t *e = &f->ents[i];
         o += (size_t)snprintf(out + o, cap - o, "%llu-%llu tipo=%u creada=%d borrada=%d\n",
                               (unsigned long long)e->id.creador, (unsigned long long)e->id.seq,
-                              e->tipo, e->creada ? 1 : 0, n0_ent_borrada(e) ? 1 : 0);
+                              e->tipo, e->creada ? 1 : 0, n0_ent_borrada(f, e) ? 1 : 0);
         for (int c = 0; c < e->n_campos; c++) {
-            const n0_op_t *op = &e->campos[c].op;
+            const n0_campo_t *cp = &e->campos[c];
+            const uint8_t *v = f->valores + cp->off_valor;
             o += (size_t)snprintf(out + o, cap - o, "  campo %u v%llu autor=%llu/%u len=%u hex=",
-                                  e->campos[c].campo, (unsigned long long)op->version_campo,
-                                  (unsigned long long)op->autor, op->autor_tipo, op->n_valor);
-            for (uint16_t b = 0; b < op->n_valor; b++)
-                o += (size_t)snprintf(out + o, cap - o, "%02x", op->valor[b]);
+                                  cp->campo, (unsigned long long)cp->version,
+                                  (unsigned long long)cp->autor, cp->autor_tipo, cp->n_valor);
+            for (uint16_t b = 0; b < cp->n_valor; b++)
+                o += (size_t)snprintf(out + o, cap - o, "%02x", v[b]);
             o += (size_t)snprintf(out + o, cap - o, "\n");
         }
     }
@@ -118,7 +119,8 @@ int main(int argc, char **argv) {
 
     // 2. Fusionar y comparar con lo que produjo el servidor.
     n0_fusion_t f;
-    n0_fusion_init(&f, dueno);
+    static uint8_t valores[64 * 1024];
+    n0_fusion_init(&f, dueno, valores, sizeof(valores));
     n0_fusion_aplicar_log(&f, log, n);
     if (f.desbordado) {
         printf("  FALLO: la fusión se desbordó\n");
@@ -136,7 +138,8 @@ int main(int argc, char **argv) {
     // 3. Y aplicar el registro dos veces no puede cambiar nada: la fusión es
     //    idempotente, que es lo que hace seguro reenviar un lote.
     n0_fusion_t g;
-    n0_fusion_init(&g, dueno);
+    static uint8_t valores2[64 * 1024];
+    n0_fusion_init(&g, dueno, valores2, sizeof(valores2));
     n0_fusion_aplicar_log(&g, log, n);
     n0_fusion_aplicar_log(&g, log, n);
     n0_fusion_ordenar(&g);

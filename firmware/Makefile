@@ -4,6 +4,7 @@ CC      ?= gcc
 CFLAGS  ?= -std=c11 -pedantic -Wall -Wextra -Werror -O2 -g
 NUCLEO  := nucleo/gfx.c nucleo/vista.c nucleo/fuente.c nucleo/render.c \
            nucleo/maquetas.c nucleo/lanzador.c nucleo/opfmt.c nucleo/fusion.c \
+           nucleo/almacen.c \
            nucleo/fuente_cuerpo.c nucleo/fuente_titulo.c
 APPS    := apps/listas.c apps/tests.c apps/estado.c
 SIM     := sim/main.c sim/pbm.c sim/guion.c sim/almacen_falso.c

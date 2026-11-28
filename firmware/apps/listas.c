@@ -11,15 +11,17 @@
 #include "../nucleo/render.h"
 
 #define DS_ITEMS 1001u
-#define MAX_VISIBLES 32
+#define MAX_VISIBLES 24
+#define MAX_TEXTO 48
 
 typedef struct {
     int16_t sel;
     int16_t pagina;
     int16_t fpp;  // filas por página, se lo dice el núcleo
     int16_t n;
-    uint32_t ids[MAX_VISIBLES];
-    const char *textos[MAX_VISIBLES];
+    n0_id_t ids[MAX_VISIBLES];
+    // Copia propia: el almacén reutiliza su buffer en cada llamada.
+    char textos[MAX_VISIBLES][MAX_TEXTO];
     uint8_t marcas[MAX_VISIBLES];
 } estado_t;
 
@@ -33,11 +35,11 @@ static n0_err_t releer(n0_ctx_t *c) {
     e->n = 0;
     while (e->n < MAX_VISIBLES) {
         const char *t = NULL;
-        uint32_t id = 0;
+        n0_id_t id = {0, 0};
         uint8_t m = 0;
         if (c->sv->lista_siguiente(c, it, &t, &id, &m) != N0_OK) break;
         e->ids[e->n] = id;
-        e->textos[e->n] = t;
+        snprintf(e->textos[e->n], MAX_TEXTO, "%s", t ? t : "");
         e->marcas[e->n] = m;
         e->n++;
     }

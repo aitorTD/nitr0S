@@ -49,12 +49,13 @@ static n0_err_t lista_abrir(n0_ctx_t *c, uint32_t ds, void **it) {
     return N0_OK;
 }
 
-static n0_err_t lista_siguiente(n0_ctx_t *c, void *it, const char **texto, uint32_t *id, uint8_t *marca) {
+static n0_err_t lista_siguiente(n0_ctx_t *c, void *it, const char **texto, n0_id_t *id, uint8_t *marca) {
     (void)c;
     int *cur = (int *)it;
     if (*cur >= g_n) return N0_ERR_NO_ENCONTRADO;
     *texto = g_items[*cur].texto;
-    *id = g_items[*cur].id;
+    id->creador = 0;
+    id->seq = g_items[*cur].id;
     *marca = g_items[*cur].marca;
     (*cur)++;
     return N0_OK;
@@ -66,11 +67,11 @@ static n0_err_t lista_cerrar(n0_ctx_t *c, void *it) {
     return N0_OK;
 }
 
-static n0_err_t marcar(n0_ctx_t *c, uint32_t ds, uint32_t id, bool hecho) {
+static n0_err_t marcar(n0_ctx_t *c, uint32_t ds, n0_id_t id, bool hecho) {
     if (!(c->capacidades & N0_CAP_STORE)) return N0_ERR_SIN_CAP;
     (void)ds;
     for (int i = 0; i < g_n; i++) {
-        if (g_items[i].id == id) {
+        if (g_items[i].id == id.seq) {
             g_items[i].marca = hecho ? N0_MARCA_HECHO : N0_MARCA_NINGUNA;
             return N0_OK;
         }
