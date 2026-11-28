@@ -21,16 +21,25 @@ una maqueta que luego no se parece».
 | `apps/` — **las tres apps de v1**: Listas, Tests y Estado | hechas contra un almacén de mentira |
 | `sim/guion.c` — ejecuta el lanzador con un guion de pulsaciones | hecho |
 | `pruebas/` — 58 comprobaciones | en verde |
-| Almacén de verdad: registro de operaciones en C y sincronización | pendiente |
+| `nucleo/opfmt.c` — codificación canónica, **los mismos bytes que el servidor** | hecha |
+| `nucleo/fusion.c` — motor de fusión con las mismas reglas que el servidor | hecho |
+| **Prueba cruzada**: C y Go fusionan el mismo registro y convergen | **en verde** |
+| Conectar las apps al almacén de verdad y al servidor | pendiente |
 | Capa de abstracción de hardware, panel, sueño | pendiente, necesita el aparato |
 
 ## Usar
 
 ```sh
-make                     # compila el simulador y pasa las 58 pruebas
+make                     # compila todo y pasa las 58 pruebas más la cruzada
 ./nitr0sim .             # un .pbm por maqueta y pantalla, para la fase visual
 ./nitr0sim . -guion      # ejecuta las apps de verdad con un guion de pulsaciones
 go run ../herramientas/pbm2png -escala 2 *.pbm
+```
+
+Para regenerar el material de la prueba cruzada, desde `servidor/`:
+
+```sh
+NITR0S_FIXTURE=$PWD/../firmware/pruebas/datos go test ./internal/merge/ -run Fixture
 ```
 
 ## La tipografía es un marcador de posición
@@ -76,3 +85,20 @@ el renderizador **se niega a pintar** un árbol que las incumpla:
   que hace que matarla sea recuperable en vez de una fuga.
 * **Una capacidad desconocida o un `api_required` fuera de rango se rechazan al
   CARGAR**, no al llamar.
+
+## Por qué existe la prueba cruzada
+
+El servidor fusiona en Go y el aparato en C. Son **dos implementaciones
+distintas de las mismas reglas**, y nada obliga a que coincidan salvo que se
+compruebe. `make cruzado` coge el registro que generó el servidor, lo fusiona
+con el núcleo, y exige que el volcado del estado sea **idéntico carácter por
+carácter**, conflictos y motivos incluidos.
+
+El registro de prueba lleva a propósito los casos que separan una
+implementación correcta de una que lo parece: empates de versión que gana el
+aparato, un borrado que sobrevive a que se edite otro campo, una resurrección
+explícita, una creación del asistente que no puede perder, ediciones sucesivas
+del mismo autor que **no** son conflictos, y texto con acentos y `ñ`.
+
+Si esta prueba se rompe, la sincronización está rota de una forma que en
+producción no se nota hasta meses después, cuando ya hay historial que perder.

@@ -1,0 +1,20 @@
+160-1 tipo=10 creada=1 borrada=0
+  campo 1 v1 autor=160/3 len=12 hex=436166c3a9206d6f6c69646f
+192-1 tipo=10 creada=1 borrada=0
+  campo 1 v1 autor=192/2 len=12 hex=4c6563686520656e74657261
+  campo 2 v1 autor=208/1 len=1 hex=01
+192-2 tipo=10 creada=1 borrada=0
+  campo 1 v7 autor=208/1 len=12 hex=50616e20696e74656772616c
+192-3 tipo=10 creada=1 borrada=1
+  campo 0 v5 autor=192/2 len=1 hex=01
+  campo 1 v1 autor=192/2 len=16 hex=426f6c73617320646520626173757261
+  campo 2 v6 autor=208/1 len=1 hex=01
+192-4 tipo=10 creada=1 borrada=0
+  campo 1 v3 autor=192/2 len=9 hex=50696c617320414141
+208-1 tipo=10 creada=1 borrada=0
+  campo 0 v3 autor=208/1 len=1 hex=00
+  campo 1 v1 autor=208/1 len=7 hex=4368616d70c3ba
+208-2 tipo=10 creada=1 borrada=0
+  campo 1 v1 autor=208/1 len=22 hex=c3916f717569732c207069c3b161207920636166c3a9
+conflicto 192-2 campo=1 autor=2 perdedor=50616e2064652063656e74656e6f206772616e6465 motivo=empate de versión: gana el lado dueño de la entidad
+conflicto 208-1 campo=0 autor=2 perdedor=01 motivo=versión de campo mayor
