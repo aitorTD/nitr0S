@@ -1,0 +1,40 @@
+[Unit]
+Description=nitr0sd — servidor de nitr0S
+Documentation=https://github.com/aitorTD/nitr0S
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nitr0s
+Group=nitr0s
+WorkingDirectory=/var/lib/nitr0s
+ExecStart=/usr/local/bin/nitr0sd -db /var/lib/nitr0s/nitr0s.db -listen 127.0.0.1:8080 -device-id 1
+Restart=on-failure
+RestartSec=5
+
+# Escucha solo en loopback: quien lo expone es Tailscale Funnel, y el
+# autenticador es el HMAC, no el TLS.
+
+# Endurecimiento. La Pi es un aparato de casa sin vigilancia, así que el
+# servicio solo puede tocar su propio directorio de datos.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/nitr0s
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+# Una Pi 3 tiene 1 GB. Si algo se desmadra, que lo pague el servicio y no el
+# sistema entero.
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target
