@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../nucleo/almacen.h"
+#include "../nucleo/sinc.h"
 #include "../nucleo/lanzador.h"
 #include "../nucleo/render.h"
 
@@ -485,6 +486,65 @@ static void test_presupuesto_de_memoria(void) {
            sizeof(n0_fusion_t), sizeof(n0_lanzador_t), sizeof(n0_vista_t), (800 / 8) * 480);
 }
 
+
+// --- El sobre y el HMAC ------------------------------------------------------
+
+static void test_sha256_vectores(void) {
+    uint8_t o[32];
+    // FIPS 180-4: sha256("abc")
+    static const uint8_t esp_abc[32] = {
+        0xba,0x78,0x16,0xbf,0x8f,0x01,0xcf,0xea,0x41,0x41,0x40,0xde,0x5d,0xae,0x22,0x23,
+        0xb0,0x03,0x61,0xa3,0x96,0x17,0x7a,0x9c,0xb4,0x10,0xff,0x61,0xf2,0x00,0x15,0xad};
+    n0_sha256((const uint8_t *)"abc", 3, o);
+    COMPRUEBA(memcmp(o, esp_abc, 32) == 0, "sha256(\"abc\") contra el vector de FIPS 180-4");
+
+    // RFC 4231 caso 2
+    static const uint8_t esp_hmac[32] = {
+        0x5b,0xdc,0xc1,0x46,0xbf,0x60,0x75,0x4e,0x6a,0x04,0x24,0x26,0x08,0x95,0x75,0xc7,
+        0x5a,0x00,0x3f,0x08,0x9d,0x27,0x39,0x83,0x9d,0xec,0x58,0xb9,0x64,0xec,0x38,0x43};
+    n0_hmac_sha256((const uint8_t *)"Jefe", 4,
+                   (const uint8_t *)"what do ya want for nothing?", 28, o);
+    COMPRUEBA(memcmp(o, esp_hmac, 32) == 0, "hmac-sha256 contra el vector de RFC 4231");
+}
+
+static void test_sobre(void) {
+    static uint8_t buf[4096];
+    const uint8_t secreto[] = "secreto-del-aparato";
+    const uint8_t ops[] = {1, 2, 3, 4, 5};
+
+    n0_sobre_t s = {N0_PROTO_VERSION, 2001, 0xD0, N0_AUTOR_APARATO, 7, 1, 42};
+    size_t n = n0_sobre_empaquetar(buf, sizeof(buf), &s, ops, sizeof(ops),
+                                   secreto, sizeof(secreto) - 1);
+    COMPRUEBA(n == 47 + sizeof(ops) + 32, "el sobre mide cabecera + ops + hmac, salió %zu", n);
+    COMPRUEBA(memcmp(buf, "nitr0Sop", 8) == 0, "lleva el magic");
+
+    n0_sobre_t r;
+    const uint8_t *o = NULL;
+    size_t n_o = 0;
+    COMPRUEBA(n0_sobre_desempaquetar(buf, n, &r, &o, &n_o, secreto, sizeof(secreto) - 1) == N0_SOBRE_OK,
+              "se verifica con el secreto correcto");
+    COMPRUEBA(r.dataset == 2001 && r.emisor == 0xD0 && r.sobre_seq == 7 && r.confirmado_hasta == 42,
+              "y los campos vuelven intactos");
+    COMPRUEBA(n_o == sizeof(ops) && memcmp(o, ops, n_o) == 0, "y las operaciones también");
+
+    // Con otro secreto, no.
+    COMPRUEBA(n0_sobre_desempaquetar(buf, n, &r, &o, &n_o, (const uint8_t *)"otro", 4) == N0_SOBRE_FIRMA,
+              "con otro secreto la firma no cuadra");
+
+    // Y tocar CUALQUIER byte del cuerpo invalida la firma: eso es lo que hace
+    // que el HMAC sirva de autenticador cuando el TLS termina en otro sitio.
+    for (size_t i = 0; i < n - 32; i++) {
+        buf[i] ^= 0x01;
+        n0_sobre_err_t e = n0_sobre_desempaquetar(buf, n, &r, &o, &n_o, secreto, sizeof(secreto) - 1);
+        buf[i] ^= 0x01;
+        if (e == N0_SOBRE_OK) {
+            COMPRUEBA(0, "tocar el byte %zu del cuerpo no invalidó la firma", i);
+            break;
+        }
+    }
+    COMPRUEBA(1, "tocar cualquier byte del cuerpo invalida la firma");
+}
+
 int main(void) {
     printf("pruebas del núcleo de nitr0S\n");
     test_validacion();
@@ -500,6 +560,8 @@ int main(void) {
     test_almacen();
     test_almacen_lleno();
     test_recibidas_no_entran_en_el_registro_propio();
+    test_sha256_vectores();
+    test_sobre();
     test_presupuesto_de_memoria();
     printf("%d comprobaciones, %d fallos\n", hechas, fallos);
     return fallos == 0 ? 0 : 1;

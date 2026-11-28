@@ -20,19 +20,24 @@ una maqueta que luego no se parece».
 | `nucleo/lanzador.c` — pila de pantallas, presupuestos, cuarentena, arena | hecho |
 | `apps/` — **las tres apps de v1**: Listas, Tests y Estado | hechas contra un almacén de mentira |
 | `sim/guion.c` — ejecuta el lanzador con un guion de pulsaciones | hecho |
-| `pruebas/` — 82 comprobaciones más la cruzada | en verde |
+| `pruebas/` — 91 comprobaciones, más la cruzada y la de extremo a extremo | en verde |
 | `nucleo/opfmt.c` — codificación canónica, **los mismos bytes que el servidor** | hecha |
 | `nucleo/fusion.c` — motor de fusión con las mismas reglas que el servidor | hecho |
 | **Prueba cruzada**: C y Go fusionan el mismo registro y convergen | **en verde** |
 | `nucleo/almacen.c` — la API de datos de las apps, sobre el registro | hecha |
 | **Las apps corren sobre el almacén de verdad**, no sobre uno de mentira | hecho |
-| Cliente de sincronización: sobre, HMAC y transporte | pendiente |
+| `nucleo/sha256.c` — SHA-256 y HMAC, contra los vectores de FIPS y RFC 4231 | hecho |
+| `nucleo/sinc.c` — el sobre y el ciclo de sincronización | hecho |
+| **Sincronización de extremo a extremo contra el servidor de verdad** | **en verde** |
+| Árbitro de sueño | pendiente |
+| Capa de abstracción de hardware, panel | pendiente, necesita el aparato |
 | Capa de abstracción de hardware, panel, sueño | pendiente, necesita el aparato |
 
 ## Usar
 
 ```sh
-make                     # compila todo y pasa las 58 pruebas más la cruzada
+make                     # compila todo y pasa las pruebas y la cruzada
+make e2e                 # levanta un servidor de verdad y sincroniza contra él
 ./nitr0sim .             # un .pbm por maqueta y pantalla, para la fase visual
 ./nitr0sim . -guion      # ejecuta las apps de verdad con un guion de pulsaciones
 go run ../herramientas/pbm2png -escala 2 *.pbm
@@ -119,3 +124,22 @@ línea, con el tope de 4 KB que admite una operación, y ocupaba **3,6 MB** —
 imposible en un ESP32-S3, que tiene 512 KB de SRAM. Lo encontró un segfault en
 las pruebas, no una revisión. Ahora los valores viven en un almacén aparte que
 pone quien llama, y el tope se comprueba en cada ejecución.
+
+## La prueba de extremo a extremo
+
+`make e2e` hace el camino entero, sin atajos:
+
+1. Compila y arranca el servidor en Go con una base de datos limpia.
+2. Da de alta un aparato y escribe su `provision.json`.
+3. **Entra en la consola web y crea tres ítems**, con `curl`, como lo haría una
+   persona con un navegador.
+4. El simulador lee ese `provision.json`, crea dos ítems propios, y sincroniza:
+   sube los suyos y baja los de la consola, con el sobre firmado con HMAC.
+5. Comprueba que un segundo ciclo no duplica nada.
+6. Comprueba que un sobre con firma mala da **401 con la hora del servidor
+   dentro**, que es el camino de recuperación por desvío de reloj.
+7. Y vuelve a la consola a comprobar que **lo que escribió el aparato aparece
+   allí**.
+
+Es decir: consola → servidor → aparato → servidor → consola, con las dos
+implementaciones hablando por HTTP.

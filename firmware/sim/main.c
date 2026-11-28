@@ -109,10 +109,12 @@ static const muestra_t MUESTRAS[] = {
 static const int N_MUESTRAS = (int)(sizeof(MUESTRAS) / sizeof(MUESTRAS[0]));
 
 int guion_ejecutar(const char *dir);
+int sincronizar(const char *ruta_provision, const char *host, const char *puerto);
 
 int main(int argc, char **argv) {
     const char *dir = (argc > 1) ? argv[1] : ".";
     if (argc > 2 && strcmp(argv[2], "-guion") == 0) return guion_ejecutar(dir);
+    if (argc > 4 && strcmp(argv[2], "-sinc") == 0) return sincronizar(argv[3], argv[4], argc > 5 ? argv[5] : "8080");
     n0_lienzo_t l;
     n0_vista_t v;
     char ruta[512];
