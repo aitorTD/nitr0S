@@ -141,3 +141,22 @@ func (a *Acceptor) Accept(env Envelope) error {
 	a.lastSeq[env.SenderID] = env.EnvelopeSeq
 	return nil
 }
+
+// PeekSender lee el sender_id del sobre SIN verificar la firma. Hace falta para
+// saber qué secretos probar, y es seguro porque nada se acepta hasta que el
+// HMAC cuadra: un sender_id mentido solo lleva a que la firma falle.
+func PeekSender(b []byte) (uint64, error) {
+	if len(b) < headerLen+hmacLen {
+		return 0, ErrShort
+	}
+	if string(b[:8]) != Magic {
+		return 0, ErrMagic
+	}
+	return binary.LittleEndian.Uint64(b[18:]), nil
+}
+
+// Supported es la comprobación de versión sin necesitar un Acceptor, para los
+// servidores que persisten el antirreplay en su propio almacén.
+func Supported(v uint16) bool {
+	return v == ProtoVersion || (ProtoVersion > 1 && v == ProtoVersion-1)
+}

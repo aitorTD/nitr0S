@@ -1,0 +1,9 @@
+# Secretos y datos locales: nunca al repositorio.
+provision.json
+*.db
+*.db-wal
+*.db-shm
+
+# Binarios compilados
+/servidor/nitr0sd
+/servidor/nitr0sd-*

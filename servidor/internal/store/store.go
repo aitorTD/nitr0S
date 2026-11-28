@@ -105,9 +105,11 @@ func Open(path string) (*DB, error) {
 		h.Close()
 		return nil, fmt.Errorf("pragmas: %w", err)
 	}
-	if _, err := h.Exec(schema); err != nil {
-		h.Close()
-		return nil, fmt.Errorf("esquema: %w", err)
+	for _, s := range []string{schema, schemaSecrets} {
+		if _, err := h.Exec(s); err != nil {
+			h.Close()
+			return nil, fmt.Errorf("esquema: %w", err)
+		}
 	}
 	db := &DB{sql: h}
 	if _, err := h.Exec(`INSERT OR IGNORE INTO meta (k,v) VALUES ('schema_version', ?)`,
@@ -158,6 +160,10 @@ func (d *DB) Ops() ([]opfmt.Op, error) {
 		return nil, err
 	}
 	defer rows.Close()
+	return scanOps(rows)
+}
+
+func scanOps(rows *sql.Rows) ([]opfmt.Op, error) {
 	var out []opfmt.Op
 	for rows.Next() {
 		var op opfmt.Op
@@ -176,18 +182,23 @@ func (d *DB) Ops() ([]opfmt.Op, error) {
 }
 
 // OpsSince devuelve las operaciones de un autor por encima de una marca de agua.
+//
+// La marca de agua es UN escalar por par, así que todas las operaciones del lado
+// del servidor comparten una sola secuencia de lamport bajo el mismo author_id,
+// y lo que distingue a la consola del asistente es author_kind. Eso sale de la
+// tabla de principales del brief: aparato, humano y agente son PRINCIPALES de
+// autenticación, no PARES de replicación. Si el asistente fuese un par aparte,
+// una marca de agua escalar no podría describir su estado.
 func (d *DB) OpsSince(authorID, after uint64) ([]opfmt.Op, error) {
-	all, err := d.Ops()
+	rows, err := d.sql.Query(`SELECT author_id,lamport,author_kind,kind,entity_creator,
+		entity_seq,entity_type,field_id,field_version,wall_clock,value
+		FROM ops WHERE author_id=? AND lamport>? ORDER BY lamport`,
+		int64(authorID), int64(after))
 	if err != nil {
 		return nil, err
 	}
-	var out []opfmt.Op
-	for _, op := range all {
-		if op.AuthorID == authorID && op.Lamport > after {
-			out = append(out, op)
-		}
-	}
-	return out, nil
+	defer rows.Close()
+	return scanOps(rows)
 }
 
 // PutConflicts guarda las escrituras perdedoras para que la consola las muestre.
@@ -260,4 +271,83 @@ func (d *DB) CountEvents() (int, error) {
 	var n int
 	err := d.sql.QueryRow(`SELECT COUNT(*) FROM events`).Scan(&n)
 	return n, err
+}
+
+// --- Secretos de aparato ------------------------------------------------------
+//
+// La Pi es la autoridad sobre la validez y la revocación del secreto del
+// aparato; el aparato solo lo guarda (tabla de propiedad del estado del brief).
+// Se admiten DOS secretos válidos a la vez: es la ventana de solape de la
+// rotación de claves, sin la cual rotar deja al aparato fuera sin teclado.
+
+const schemaSecrets = `
+CREATE TABLE IF NOT EXISTS device_secrets (
+  device_id  INTEGER NOT NULL,
+  secret     BLOB NOT NULL,
+  valid_from INTEGER NOT NULL,
+  revoked_at INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (device_id, secret)
+);
+
+CREATE TABLE IF NOT EXISTS counters (
+  author_id INTEGER PRIMARY KEY,
+  lamport   INTEGER NOT NULL DEFAULT 0
+);
+`
+
+// AddSecret da de alta un secreto para un aparato.
+func (d *DB) AddSecret(deviceID uint64, secret []byte) error {
+	_, err := d.sql.Exec(`INSERT OR REPLACE INTO device_secrets
+		(device_id,secret,valid_from) VALUES (?,?,?)`,
+		int64(deviceID), secret, time.Now().Unix())
+	return err
+}
+
+// RevokeSecret lo marca revocado. No se borra: queda el rastro de que existió.
+func (d *DB) RevokeSecret(deviceID uint64, secret []byte) error {
+	_, err := d.sql.Exec(`UPDATE device_secrets SET revoked_at=? WHERE device_id=? AND secret=?`,
+		time.Now().Unix(), int64(deviceID), secret)
+	return err
+}
+
+// Secrets devuelve los secretos vigentes, el más nuevo primero. Son los que el
+// sobre puede llevar firmados durante la ventana de solape.
+func (d *DB) Secrets(deviceID uint64) ([][]byte, error) {
+	rows, err := d.sql.Query(`SELECT secret FROM device_secrets
+		WHERE device_id=? AND revoked_at=0 ORDER BY valid_from DESC`, int64(deviceID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		var s []byte
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// NextLamport reserva el siguiente lamport de un autor. Se persiste ANTES de
+// usarse, igual que en el aparato: un lamport reutilizado rompe la idempotencia.
+func (d *DB) NextLamport(authorID uint64) (uint64, error) {
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var cur int64
+	err = tx.QueryRow(`SELECT lamport FROM counters WHERE author_id=?`, int64(authorID)).Scan(&cur)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, err
+	}
+	next := cur + 1
+	if _, err := tx.Exec(`INSERT INTO counters (author_id,lamport) VALUES (?,?)
+		ON CONFLICT(author_id) DO UPDATE SET lamport=excluded.lamport`,
+		int64(authorID), next); err != nil {
+		return 0, err
+	}
+	return uint64(next), tx.Commit()
 }

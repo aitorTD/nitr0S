@@ -17,17 +17,44 @@ Implementa lo especificado en `../diseno/registro-de-operaciones-y-sincronizacio
 | Marcador de tarjeta (tarjeta ajena no se fusiona) | **hecho** |
 | Persistencia en SQLite: operaciones, conflictos, marcas de agua, eventos C3 | **hecha** |
 | **Matriz de conflictos, los 15 casos** | **en verde** |
-| Extremos HTTPS de las tres clases | pendiente |
+| **Extremos de las tres clases** (`/v1/sync/ops`, `/v1/sync/events`, `/v1/content/{hash}`) | **hechos** (C1 todavía sin almacén de contenido) |
+| **Contrato congelado sin versión en la ruta** (`/hello`, `/update`) | **hecho** |
+| **Autenticación por HMAC con rotación, y 401 con la hora del servidor** | **hecha** |
+| **Antirreplay persistido**, que sobrevive a reiniciar el servidor | **hecho** |
+| **Aprovisionamiento**: alta de aparato y `provision.json` para la microSD | **hecho** |
 | Consola web | pendiente |
+| Almacén de contenido direccionado por hash (C1) e imagen de OTA | pendiente |
 | API de integración del asistente (ámbitos, auditoría) | pendiente, es el paso 3 |
 | Planificador de repetición espaciada en el servidor | pendiente |
 
 ## Compilar y probar
 
 ```sh
-go test ./...                 # 20 pruebas; la matriz de conflictos entera
+go test ./...                 # 36 pruebas; la matriz de conflictos entera
 go vet ./...
-go run ./cmd/nitr0sd -db /tmp/nitr0s.db
+```
+
+## Arrancar
+
+```sh
+# dar de alta el aparato y escribir el fichero que va a la microSD (0600)
+go run ./cmd/nitr0sd -db ~/nitr0s.db -provision 1 -provision-url https://<tu-nombre>.ts.net
+
+# servir
+go run ./cmd/nitr0sd -db ~/nitr0s.db -listen 127.0.0.1:8080
+
+# ver qué hay dentro sin servir
+go run ./cmd/nitr0sd -db ~/nitr0s.db -status
+```
+
+Escucha **en claro**: el TLS lo pone Tailscale Funnel por delante, y por eso el
+autenticador es el HMAC y no el TLS. `provision.json` y `*.db` están en `.gitignore`.
+
+Comprobación rápida de que está vivo:
+
+```sh
+curl -s http://127.0.0.1:8080/hello
+# {"server_time":...,"proto_versions":[1],"dataset_id":2001,"update_path":"/update"}
 ```
 
 ## Compilación cruzada a la Pi
@@ -68,3 +95,8 @@ es una decisión consciente, no algo que deba pasar solo.
   correcto con un reloj arbitrariamente equivocado y no tiene tamaño.
 * **No descarta en silencio una escritura perdedora.** Van a la tabla `conflicts`.
 * **No mete las propuestas del asistente en el registro.** El registro contiene hechos.
+* **No versiona `/hello` ni `/update`.** Son el contrato congelado: un cambio de protocolo que
+  los rompiera sería irrecuperable sin USB, y este aparato puede no tener USB. `/v1/hello` da 404
+  a propósito, y hay una prueba que lo exige.
+* **No distingue un aparato desconocido de una firma mala.** Los dos dan el mismo 401, con la hora
+  del servidor dentro.

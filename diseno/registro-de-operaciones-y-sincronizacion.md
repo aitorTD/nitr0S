@@ -160,6 +160,10 @@ De la corrección del brief: las peticiones explícitas del autor producen cambi
 
 `magic "nitr0Sop"`, `proto_version u16`, `dataset_id u64`, `sender_id u64`, `sender_kind u8`, `envelope_seq u64`, `op_count u32`, `acked_through u64`, `hmac 32 B`.
 
+**Aclaración que salió al implementarlo:** el `acked_through` del sobre es la marca de agua **del flujo del receptor** que el remitente dice tener ya, no la del suyo. Lo contrario no serviría de nada, porque nadie necesita que le cuenten su propio registro. Los dos valores de §3.4 siguen guardándose en NVS; el que **viaja** es este.
+
+**Y una segunda:** la marca de agua es **un escalar por par**, así que todas las operaciones del lado del servidor comparten **una sola secuencia de `lamport` bajo el mismo `author_id`**, y lo que distingue a la consola del asistente es `author_kind`. Eso se desprende de la tabla de principales del brief: aparato, humano y agente son **principales de autenticación, no pares de replicación**. Si el asistente fuera un par aparte, un escalar no podría describir su estado. El `creator_id` de lo que crea el servidor es también el del servidor, y el `creator_seq` lo reparte un solo asignador, así que la unicidad de §2.1 se mantiene.
+
 El `dataset_id` está para que **un cambio destructivo de esquema no pueda fusionarse en silencio**: la política es solo hacia delante y solo aditiva, y un cambio destructivo exige un `dataset_id` nuevo, con lo que los lotes viejos dejan de encajar en vez de corromper.
 
 ### 5.2. Autenticación, y un mecanismo que hace dos trabajos
@@ -176,6 +180,8 @@ Y el antirreplay: **`envelope_seq` es un contador monótono por aparato que el s
 Un reintento usa un `envelope_seq` nuevo con las mismas operaciones dentro: el antirreplay lo acepta y la idempotencia por `op_id` impide que haga nada dos veces. Las dos propiedades conviven porque viven en campos distintos.
 
 **Desvío de reloj:** el cuerpo del `401` lleva la hora del servidor, el aparato ajusta su reloj y **reintenta exactamente una vez**. Sin esto, un aparato con el reloj desviado se queda bloqueado para siempre con un mensaje inútil y sin teclado donde arreglarlo.
+
+**Implementado así, con dos precisiones:** *todos* los 401 llevan la hora, y un aparato desconocido y una firma mala dan el **mismo** 401, para no filtrar si el aparato existe. Y `/hello` va **sin autenticar** a propósito: es lo primero que necesita un aparato que ha perdido el reloj, y no entrega nada secreto, porque el autenticador es el HMAC.
 
 ### 5.3. Versiones y el contrato congelado
 
