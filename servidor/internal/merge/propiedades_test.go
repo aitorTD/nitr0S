@@ -183,3 +183,29 @@ func TestVersionCeroNoSeAcepta(t *testing.T) {
 		t.Fatalf("con ProtoVersion=1 solo se habla una versión, salió %v", got)
 	}
 }
+
+// Editar dos veces el mismo campo NO es un conflicto: es una edición sucesiva.
+// Anotarlo convertiría cada corrección de una errata en una fila de la pantalla
+// de conflictos de la consola.
+func TestEdicionSucesivaDelMismoAutorNoEsConflicto(t *testing.T) {
+	e := ent(consoleID, 1)
+	s := newSet()
+	s.ApplyAll([]opfmt.Op{
+		opCreate(consoleID, opfmt.AuthorConsole, 1, e),
+		opSet(consoleID, opfmt.AuthorConsole, 2, e, fText, 1, []byte("pan")),
+		opSet(consoleID, opfmt.AuthorConsole, 3, e, fText, 2, []byte("pan de centeno")),
+		opSet(consoleID, opfmt.AuthorConsole, 4, e, fText, 3, []byte("pan de centeno grande")),
+	})
+	if len(s.Conflicts) != 0 {
+		t.Fatalf("tres ediciones del mismo autor no son conflictos, se anotaron %d: %+v",
+			len(s.Conflicts), s.Conflicts)
+	}
+	if got, _ := s.Entities()[0].Field(fText); string(got) != "pan de centeno grande" {
+		t.Fatalf("debe quedar la última, salió %q", got)
+	}
+	// Pero si entra OTRO autor y pierde, eso sí se anota.
+	s.Apply(opSet(devID, opfmt.AuthorDevice, 5, e, fText, 2, []byte("pan integral")))
+	if len(s.Conflicts) != 1 {
+		t.Fatalf("la escritura perdida de otro autor sí se anota, hay %d", len(s.Conflicts))
+	}
+}

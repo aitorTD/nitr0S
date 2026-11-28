@@ -43,6 +43,8 @@ func TestElValidadorEsConservador(t *testing.T) {
 			{"question_id":7,"bank_id":1,"enunciado":"a","opciones":["a"],"correcta":0}]}`, "al menos 2 opciones"},
 		{"correcta fuera de rango", `{"bank_id":1,"nombre":"x","preguntas":[
 			{"question_id":7,"bank_id":1,"enunciado":"a","opciones":["a","b"],"correcta":5}]}`, "correcta es 5"},
+		{"concordancia con una sola opción", `{"bank_id":1,"nombre":"x","preguntas":[
+			{"question_id":7,"bank_id":1,"enunciado":"a","opciones":["a"],"correcta":3}]}`, "solo hay 1 opción"},
 		{"falta correcta", `{"bank_id":1,"nombre":"x","preguntas":[
 			{"question_id":7,"bank_id":1,"enunciado":"a","opciones":["a","b"]}]}`, "falta correcta"},
 		{"opción vacía", `{"bank_id":1,"nombre":"x","preguntas":[

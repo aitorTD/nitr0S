@@ -119,8 +119,8 @@ func Validar(crudo []byte, yaUsados map[uint64]bool) (*Banco, []string) {
 		case p.Correcta == nil:
 			errs = append(errs, donde+": falta correcta (el índice de la opción correcta)")
 		case *p.Correcta < 0 || *p.Correcta >= len(p.Opciones):
-			errs = append(errs, fmt.Sprintf("%s: correcta es %d, pero hay %d opciones (0 a %d)",
-				donde, *p.Correcta, len(p.Opciones), len(p.Opciones)-1))
+			errs = append(errs, fmt.Sprintf("%s: correcta es %d, pero %s (0 a %d)",
+				donde, *p.Correcta, opciones(len(p.Opciones)), len(p.Opciones)-1))
 		}
 		// El enunciado viaja como un valor de campo, así que el tope duro de
 		// 4 KB del núcleo también aplica, en bytes y no en caracteres.
@@ -133,4 +133,13 @@ func Validar(crudo []byte, yaUsados map[uint64]bool) (*Banco, []string) {
 		return nil, errs
 	}
 	return &b, nil
+}
+
+// opciones concuerda el número con el sustantivo. "hay 1 opciones" es
+// exactamente la clase de texto que la sección 13 del brief no admite.
+func opciones(n int) string {
+	if n == 1 {
+		return "solo hay 1 opción"
+	}
+	return fmt.Sprintf("hay %d opciones", n)
 }

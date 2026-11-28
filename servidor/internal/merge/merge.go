@@ -184,10 +184,15 @@ func (s *Set) Apply(op opfmt.Op) {
 	} else {
 		_, reason = beats(cur, op, owner)
 	}
-	// Solo es conflicto si se pierde una escritura DISTINTA. Dos borrados que
-	// convergen al mismo valor no son nada que contarle al usuario, y anotarlos
-	// llenaría la consola de ruido que parecería un problema.
-	if !bytes.Equal(loser.Value, winner.Value) {
+	// Solo es conflicto si se pierde una escritura DISTINTA de OTRO autor.
+	//
+	// Dos borrados que convergen al mismo valor no son nada que contarle al
+	// usuario. Y que un autor sobrescriba su PROPIO valor anterior tampoco: eso
+	// es una edición sucesiva, no un conflicto, y anotarla convertiría cada
+	// corrección de una errata en una fila de la pantalla de conflictos. Las dos
+	// reglas son la misma: la pantalla de conflictos es para escrituras que
+	// alguien perdió sin enterarse.
+	if !bytes.Equal(loser.Value, winner.Value) && loser.AuthorID != winner.AuthorID {
 		s.Conflicts = append(s.Conflicts, Conflict{e.ID, field, loser, winner, reason})
 	}
 }
