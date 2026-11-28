@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listas — nitr0S</title></head>
+<body>
+{{template "nav.html" .}}
+<h1>Listas</h1>
+{{if .Error}}<p role="alert"><strong>{{.Error}}</strong></p>{{end}}
+
+<form method="post" action="/listas/crear">
+  <label>Añadir <input name="texto" required></label>
+  <button type="submit">Añadir</button>
+</form>
+
+{{if .Filas}}
+<table>
+  <caption>Ítems. «Entregado» quiere decir que el aparato ya lo tiene.</caption>
+  <thead><tr><th>Texto<th>Hecho<th>Entregado<th>Acciones</tr></thead>
+  <tbody>
+  {{range .Filas}}
+    <tr{{if .Borrado}} aria-disabled="true"{{end}}>
+      <td>
+        {{if .Borrado}}<del>{{.Texto}}</del>{{else}}
+        <form method="post" action="/listas/editar">
+          <input type="hidden" name="id" value="{{.Clave}}">
+          <input name="texto" value="{{.Texto}}" aria-label="Texto del ítem">
+          <button type="submit">Guardar</button>
+        </form>
+        {{end}}
+      </td>
+      <td>{{if .Hecho}}sí{{else}}no{{end}}</td>
+      <td>{{if .Entregado}}sí{{else}}<strong>no</strong>{{end}}</td>
+      <td>
+        {{if not .Borrado}}
+        <form method="post" action="/listas/borrar">
+          <input type="hidden" name="id" value="{{.Clave}}">
+          <button type="submit">Borrar</button>
+        </form>
+        {{else}}borrado{{end}}
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>Todavía no hay ningún ítem. Añade el primero con el campo de arriba.</p>
+{{end}}
+</body></html>

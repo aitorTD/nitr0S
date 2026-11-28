@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar — nitr0S</title></head>
+<body>
+<h1>nitr0S</h1>
+{{if .Error}}<p role="alert"><strong>Usuario o contraseña incorrectos.</strong></p>{{end}}
+<form method="post" action="/login">
+  <p><label>Usuario <input name="usuario" autocomplete="username" required autofocus></label></p>
+  <p><label>Contraseña <input name="clave" type="password" autocomplete="current-password" required></label></p>
+  <p><button type="submit">Entrar</button></p>
+</form>
+</body></html>

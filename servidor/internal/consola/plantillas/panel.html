@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel — nitr0S</title></head>
+<body>
+{{template "nav.html" .}}
+<h1>Panel</h1>
+
+<h2>Sincronización con el aparato {{.DeviceID}}</h2>
+<dl>
+  <dt>Última vez que se conectó</dt><dd>{{fecha .UltimaSync}}</dd>
+  <dt>Confirmado por el aparato hasta</dt><dd>lamport {{.AckedThrough}}</dd>
+  <dt>Guardado en la Pi pero <em>no</em> entregado al aparato</dt><dd>{{.Pendientes}} operaciones</dd>
+</dl>
+<p>Los dos estados de entrega son distintos a propósito: «guardado en la Pi» no
+significa «el aparato lo tiene». Mientras el aparato no se conecte, lo que
+escribas aquí vive solo en la Pi.</p>
+
+<h2>Contenido</h2>
+<dl>
+  <dt>Operaciones en el registro</dt><dd>{{.Operaciones}}</dd>
+  <dt>Conflictos sin revisar</dt><dd>{{.Conflictos}}</dd>
+  <dt>Eventos recibidos</dt><dd>{{.Eventos}}</dd>
+</dl>
+</body></html>

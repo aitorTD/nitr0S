@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conflictos — nitr0S</title></head>
+<body>
+{{template "nav.html" .}}
+<h1>Conflictos</h1>
+
+{{if .Conflictos}}
+<p>Estas ediciones se perdieron al fusionar. No se descartan en silencio:
+aquí está lo que se escribió, lo que quedó y por qué.</p>
+<table>
+  <thead><tr><th>Cuándo<th>Ítem<th>Campo<th>Se intentó escribir<th>Quedó<th>Por qué<th></tr></thead>
+  <tbody>
+  {{range .Conflictos}}
+    <tr>
+      <td>{{fecha .CreatedAt}}</td>
+      <td>{{.Entity.CreatorID}}-{{.Entity.CreatorSeq}}</td>
+      <td>{{.FieldID}}</td>
+      <td>{{texto .LoserValue}}</td>
+      <td>{{texto .WinnerVal}}</td>
+      <td>{{.Reason}}</td>
+      <td>
+        <form method="post" action="/conflictos/visto">
+          <input type="hidden" name="id" value="{{.ID}}">
+          <button type="submit">Visto</button>
+        </form>
+      </td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>No hay ningún conflicto sin revisar.</p>
+{{end}}
+</body></html>

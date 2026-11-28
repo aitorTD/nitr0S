@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bancos — nitr0S</title></head>
+<body>
+{{template "nav.html" .}}
+<h1>Bancos de preguntas</h1>
+
+{{if .Ok}}<p role="status"><strong>{{.Ok}}</strong></p>{{end}}
+{{if .Errores}}
+<p role="alert"><strong>El banco no es válido. Se listan todos los problemas, no solo el primero:</strong></p>
+<ul>{{range .Errores}}<li>{{.}}</li>{{end}}</ul>
+{{end}}
+
+<p>Pega el JSON del banco y valídalo. El validador es deliberadamente estricto:
+como gana el dispositivo, un dato que esta pantalla aceptara y el aparato
+rechazara se perdería en silencio en el lado que manda.</p>
+
+<form method="post" action="/bancos">
+  <p><label for="json">JSON del banco</label></p>
+  <textarea id="json" name="json" rows="20" cols="80" required>{{.JSON}}</textarea>
+  <p><button type="submit">Validar</button></p>
+</form>
+
+<details>
+  <summary>Formato</summary>
+<pre>{
+  "bank_id": 1,
+  "nombre": "Farmacología, tema 3",
+  "preguntas": [
+    {
+      "question_id": 1001,
+      "bank_id": 1,
+      "enunciado": "¿Cuál es la vida media de …?",
+      "opciones": ["2 h", "6 h", "12 h", "24 h"],
+      "correcta": 1
+    }
+  ]
+}</pre>
+  <p>El <code>question_id</code> es estable para siempre y <strong>no se reutiliza nunca</strong>,
+  ni después de borrar la pregunta: el progreso de repetición espaciada va atado a él.</p>
+</details>
+</body></html>

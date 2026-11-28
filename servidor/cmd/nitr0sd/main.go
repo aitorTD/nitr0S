@@ -7,6 +7,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -19,10 +20,12 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/aitorTD/nitr0S/servidor/internal/api"
+	"github.com/aitorTD/nitr0S/servidor/internal/consola"
 	"github.com/aitorTD/nitr0S/servidor/internal/merge"
 	"github.com/aitorTD/nitr0S/servidor/internal/store"
 	"github.com/aitorTD/nitr0S/servidor/internal/wire"
@@ -47,35 +50,67 @@ func main() {
 		outDir    = flag.String("provision-out", ".", "directorio donde escribir provision.json")
 		serverURL = flag.String("provision-url", "", "nombre del servidor que va en provision.json")
 		status    = flag.Bool("status", false, "solo informar del estado y salir")
+		addUser   = flag.String("add-user", "", "crea o cambia un usuario de la consola y sale")
+		deviceID  = flag.Uint64("device-id", 1, "aparato cuyos estados de entrega muestra la consola")
+		secureCk  = flag.Bool("secure-cookie", false, "marca la cookie de sesión como Secure (ponlo detrás de Funnel)")
 	)
 	flag.Parse()
 
-	if err := run(*db, *listen, *serverID, *datasetID, *provision, *outDir, *serverURL, *status); err != nil {
+	o := opciones{
+		dbPath: *db, listen: *listen, serverID: *serverID, datasetID: *datasetID,
+		provisionDev: *provision, outDir: *outDir, serverURL: *serverURL,
+		statusOnly: *status, addUser: *addUser, deviceID: *deviceID, secureCookie: *secureCk,
+	}
+	if err := run(o); err != nil {
 		fmt.Fprintf(os.Stderr, "nitr0sd: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-func run(dbPath, listen string, serverID, datasetID, provisionDev uint64,
-	outDir, serverURL string, statusOnly bool) error {
-	h, err := store.Open(dbPath)
+type opciones struct {
+	dbPath, listen, outDir, serverURL, addUser  string
+	serverID, datasetID, provisionDev, deviceID uint64
+	statusOnly, secureCookie                    bool
+}
+
+func run(o opciones) error {
+	h, err := store.Open(o.dbPath)
 	if err != nil {
-		return fmt.Errorf("no se pudo abrir el almacén %q: %w", dbPath, err)
+		return fmt.Errorf("no se pudo abrir el almacén %q: %w", o.dbPath, err)
 	}
 	defer h.Close()
 
-	if provisionDev != 0 {
-		return provisionar(h, provisionDev, outDir, serverURL)
+	if o.addUser != "" {
+		return crearUsuario(h, o.addUser)
 	}
-	if statusOnly {
-		return informar(h, dbPath)
+	if o.provisionDev != 0 {
+		return provisionar(h, o.provisionDev, o.outDir, o.serverURL)
+	}
+	if o.statusOnly {
+		return informar(h, o.dbPath)
+	}
+	if err := h.PurgeSessions(); err != nil {
+		return err
+	}
+	if n, err := h.CountUsers(); err == nil && n == 0 {
+		fmt.Println("AVISO: no hay ningún usuario de consola. Crea uno con -add-user <nombre>")
 	}
 
+	mux := api.New(h, api.Config{
+		ServerID: o.serverID, DatasetID: o.datasetID, Schema: esquemaV1,
+	}).Routes()
+	cons, err := consola.New(h, consola.Config{
+		ServerID: o.serverID, Schema: esquemaV1, DeviceID: o.deviceID,
+		SecureCookie: o.secureCookie,
+	})
+	if err != nil {
+		return err
+	}
+	cons.Rutas(mux)
+
 	srv := &http.Server{
-		Addr: listen,
-		Handler: api.New(h, api.Config{
-			ServerID: serverID, DatasetID: datasetID, Schema: esquemaV1,
-		}).Routes(),
+		Addr:    o.listen,
+		Handler: mux,
 		// Una Pi 3 detrás de Funnel: sin plazos, una conexión colgada se queda
 		// para siempre y el servidor se acaba quedando sin descriptores.
 		ReadHeaderTimeout: 10 * time.Second,
@@ -91,8 +126,8 @@ func run(dbPath, listen string, serverID, datasetID, provisionDev uint64,
 	go func() {
 		fmt.Printf("nitr0sd — %s/%s, go %s\n", runtime.GOOS, runtime.GOARCH, runtime.Version())
 		fmt.Printf("protocolo v%d (se aceptan %v), dataset %d, autor del servidor %d\n",
-			wire.ProtoVersion, wire.SupportedVersions(), datasetID, serverID)
-		fmt.Printf("escuchando en http://%s (el TLS lo pone Funnel por delante)\n", listen)
+			wire.ProtoVersion, wire.SupportedVersions(), o.datasetID, o.serverID)
+		fmt.Printf("escuchando en http://%s (el TLS lo pone Funnel por delante)\n", o.listen)
 		errc <- srv.ListenAndServe()
 	}()
 
@@ -108,6 +143,26 @@ func run(dbPath, listen string, serverID, datasetID, provisionDev uint64,
 		defer cancel()
 		return srv.Shutdown(cctx)
 	}
+}
+
+// crearUsuario pide la contraseña por la entrada estándar para que no quede en
+// el historial del shell ni en la lista de procesos.
+func crearUsuario(h *store.DB, nombre string) error {
+	fmt.Printf("contraseña para %q (se lee de la entrada estándar): ", nombre)
+	r := bufio.NewReader(os.Stdin)
+	clave, err := r.ReadString('\n')
+	if err != nil {
+		return err
+	}
+	clave = strings.TrimRight(clave, "\r\n")
+	if len(clave) < 10 {
+		return errors.New("la contraseña tiene que tener al menos 10 caracteres")
+	}
+	if err := h.AddUser(nombre, clave); err != nil {
+		return err
+	}
+	fmt.Printf("usuario %q listo\n", nombre)
+	return nil
 }
 
 func informar(h *store.DB, dbPath string) error {

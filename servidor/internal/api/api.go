@@ -215,6 +215,13 @@ func (s *Server) syncOps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lo que el aparato dice tener del flujo del servidor es lo que distingue
+	// "guardado en la Pi" de "entregado al aparato" en la consola.
+	if err := s.db.SetPeerAcked(env.SenderID, env.AckedThrough); err != nil {
+		s.fail(w, http.StatusInternalServerError, "STORE-05", "no se pudo guardar la marca de agua")
+		return
+	}
+
 	// Se refusiona desde el registro completo: el estado es derivado y el
 	// registro es la verdad, así que no hay estado incremental que corromper.
 	todas, err := s.db.Ops()

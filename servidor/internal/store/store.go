@@ -105,7 +105,7 @@ func Open(path string) (*DB, error) {
 		h.Close()
 		return nil, fmt.Errorf("pragmas: %w", err)
 	}
-	for _, s := range []string{schema, schemaSecrets} {
+	for _, s := range []string{schema, schemaSecrets, schemaHumans} {
 		if _, err := h.Exec(s); err != nil {
 			h.Close()
 			return nil, fmt.Errorf("esquema: %w", err)
@@ -350,4 +350,126 @@ func (d *DB) NextLamport(authorID uint64) (uint64, error) {
 		return 0, err
 	}
 	return uint64(next), tx.Commit()
+}
+
+// --- Autenticación humana y estados de entrega -------------------------------
+
+const schemaHumans = `
+CREATE TABLE IF NOT EXISTS users (
+  username   TEXT PRIMARY KEY,
+  salt       BLOB NOT NULL,
+  hash       BLOB NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token      BLOB PRIMARY KEY,
+  username   TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+`
+
+// PeerAcked es la marca de agua que el par dice tener DEL FLUJO DEL SERVIDOR.
+// Es lo que permite distinguir "guardado en la Pi" de "entregado al aparato",
+// que el brief exige mostrar como dos estados distintos.
+func (d *DB) SetPeerAcked(peerID, acked uint64) error {
+	_, err := d.sql.Exec(`INSERT INTO peers (peer_id,acked_through,last_seen) VALUES (?,?,?)
+		ON CONFLICT(peer_id) DO UPDATE SET
+		  acked_through=MAX(peers.acked_through, excluded.acked_through),
+		  last_seen=excluded.last_seen`,
+		int64(peerID), int64(acked), time.Now().Unix())
+	return err
+}
+
+func (d *DB) PeerAcked(peerID uint64) (uint64, error) {
+	var v int64
+	err := d.sql.QueryRow(`SELECT acked_through FROM peers WHERE peer_id=?`, int64(peerID)).Scan(&v)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return uint64(v), err
+}
+
+func (d *DB) PeerLastSeen(peerID uint64) (int64, error) {
+	var v int64
+	err := d.sql.QueryRow(`SELECT last_seen FROM peers WHERE peer_id=?`, int64(peerID)).Scan(&v)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return v, err
+}
+
+// NextFieldVersion devuelve la versión siguiente de un campo concreto. Se
+// calcula desde el registro, que es la verdad, y no desde ningún contador.
+func (d *DB) NextFieldVersion(e opfmt.EntityID, field uint16) (uint64, error) {
+	var v sql.NullInt64
+	err := d.sql.QueryRow(`SELECT MAX(field_version) FROM ops
+		WHERE entity_creator=? AND entity_seq=? AND field_id=?`,
+		int64(e.CreatorID), int64(e.CreatorSeq), field).Scan(&v)
+	if err != nil {
+		return 0, err
+	}
+	if !v.Valid {
+		return 1, nil
+	}
+	return uint64(v.Int64) + 1, nil
+}
+
+// NextCreatorSeq reparte el creator_seq del servidor. Un solo asignador, así que
+// (creator_id, creator_seq) sigue siendo único por construcción.
+func (d *DB) NextCreatorSeq(creatorID uint64) (uint64, error) {
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	var cur sql.NullInt64
+	if err := tx.QueryRow(`SELECT MAX(entity_seq) FROM ops WHERE entity_creator=?`,
+		int64(creatorID)).Scan(&cur); err != nil {
+		return 0, err
+	}
+	var seq int64 = 1
+	if cur.Valid {
+		seq = cur.Int64 + 1
+	}
+	return uint64(seq), tx.Commit()
+}
+
+type Conflicto struct {
+	ID         int64
+	Entity     opfmt.EntityID
+	FieldID    uint16
+	Reason     string
+	LoserKind  opfmt.AuthorKind
+	LoserValue []byte
+	WinnerVal  []byte
+	CreatedAt  int64
+}
+
+// Conflicts devuelve los conflictos sin reconocer, los más nuevos primero.
+func (d *DB) Conflicts(limit int) ([]Conflicto, error) {
+	rows, err := d.sql.Query(`SELECT id,entity_creator,entity_seq,field_id,reason,
+		loser_kind,loser_value,winner_value,created_at FROM conflicts
+		WHERE acknowledged=0 ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Conflicto
+	for rows.Next() {
+		var c Conflicto
+		var ec, es int64
+		if err := rows.Scan(&c.ID, &ec, &es, &c.FieldID, &c.Reason,
+			&c.LoserKind, &c.LoserValue, &c.WinnerVal, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		c.Entity = opfmt.EntityID{CreatorID: uint64(ec), CreatorSeq: uint64(es)}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) AckConflict(id int64) error {
+	_, err := d.sql.Exec(`UPDATE conflicts SET acknowledged=1 WHERE id=?`, id)
+	return err
 }

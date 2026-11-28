@@ -22,7 +22,9 @@ Implementa lo especificado en `../diseno/registro-de-operaciones-y-sincronizacio
 | **Autenticación por HMAC con rotación, y 401 con la hora del servidor** | **hecha** |
 | **Antirreplay persistido**, que sobrevive a reiniciar el servidor | **hecho** |
 | **Aprovisionamiento**: alta de aparato y `provision.json` para la microSD | **hecho** |
-| Consola web | pendiente |
+| **Consola web**: panel, listas, conflictos, validador de bancos | **hecha**, deliberadamente sin estilo (ver abajo) |
+| **Autenticación humana** (PBKDF2 de la biblioteca estándar, sesiones) | **hecha** |
+| **Los dos estados de entrega**: guardado en la Pi / entregado al aparato | **hechos** |
 | Almacén de contenido direccionado por hash (C1) e imagen de OTA | pendiente |
 | API de integración del asistente (ámbitos, auditoría) | pendiente, es el paso 3 |
 | Planificador de repetición espaciada en el servidor | pendiente |
@@ -30,7 +32,7 @@ Implementa lo especificado en `../diseno/registro-de-operaciones-y-sincronizacio
 ## Compilar y probar
 
 ```sh
-go test ./...                 # 36 pruebas; la matriz de conflictos entera
+go test ./...                 # 47 pruebas; la matriz de conflictos entera
 go vet ./...
 ```
 
@@ -40,8 +42,12 @@ go vet ./...
 # dar de alta el aparato y escribir el fichero que va a la microSD (0600)
 go run ./cmd/nitr0sd -db ~/nitr0s.db -provision 1 -provision-url https://<tu-nombre>.ts.net
 
-# servir
-go run ./cmd/nitr0sd -db ~/nitr0s.db -listen 127.0.0.1:8080
+# crear el usuario de la consola (la contraseña se lee de la entrada estándar,
+# así que no queda en el historial del shell ni en la lista de procesos)
+go run ./cmd/nitr0sd -db ~/nitr0s.db -add-user aitor
+
+# servir (API + consola en el mismo puerto)
+go run ./cmd/nitr0sd -db ~/nitr0s.db -listen 127.0.0.1:8080 -device-id 1
 
 # ver qué hay dentro sin servir
 go run ./cmd/nitr0sd -db ~/nitr0s.db -status
@@ -100,3 +106,16 @@ es una decisión consciente, no algo que deba pasar solo.
   a propósito, y hay una prueba que lo exige.
 * **No distingue un aparato desconocido de una firma mala.** Los dos dan el mismo 401, con la hora
   del servidor dentro.
+
+## Por qué la consola no tiene estilo
+
+Es deliberado, no provisionalidad perezosa. La sección 12.3 del brief fija el orden
+de la fase visual: primero el inventario de pantallas, después dos o tres propuestas
+de la **pantalla de lista del aparato**, que es la que manda porque las tres apps son
+listas, y **«la consola se hace después, tomando los mismos tokens»**.
+
+Inventar aquí una tipografía, unos espaciados o unos colores sería decidir por omisión
+lo que la corrección 8 del brief reserva explícitamente al autor. Así que la consola
+funciona entera, con HTML semántico y sin una sola línea de CSS, y se ve como la ve el
+navegador. Cuando existan los tokens, se le pone una hoja de estilo y el marcado ya
+está estructurado para recibirla.
