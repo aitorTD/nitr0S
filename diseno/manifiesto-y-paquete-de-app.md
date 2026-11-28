@@ -257,8 +257,8 @@ Tres cosas que el ejemplo deja ver:
 
 | Qué | Dónde se decide | Bloquea |
 | --- | --- | --- |
-| Tipos de nodo de vista y su semántica | Paso 4c | Los descriptores de `views` |
-| Cuotas concretas por app en `store` | Paso 4c | Nada de v1; hace falta un número antes de la primera escritura |
+| ~~Tipos de nodo de vista y su semántica~~ | **Hecho: `api-del-nucleo.md` §5**, diez nodos cerrados | — |
+| ~~Cuotas concretas por app en `store`~~ | **Hecho: `api-del-nucleo.md` §8.** Las decide el núcleo, no el manifiesto, así que este formato no cambia | — |
 | Qué textos y con qué claves | D7, inventario de textos | Nada |
 | El aspecto de todo | Fase visual, sección 12 | Nada del formato |
 
