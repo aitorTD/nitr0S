@@ -1,5 +1,9 @@
 # Desplegar nitr0sd en la Raspberry Pi
 
+> **¿Tarjeta en blanco?** Ve a [primera-vez.md](primera-vez.md): el camino
+> completo en orden, de grabar la tarjeta a tener la consola abierta, con una
+> comprobación por paso.
+
 La Pi arranca de una microSD que puedes meter en tu ordenador, así que todo lo
 que sigue se hace desde ahí. No hace falta tener consola en la Pi.
 
